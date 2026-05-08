@@ -15,6 +15,7 @@ public class CardGolf : Card
 
     override public void OnMouseUpAsButton()
     {
+        Golf.CARD_CLICKED(this);
         base.OnMouseUpAsButton();
     }
 }

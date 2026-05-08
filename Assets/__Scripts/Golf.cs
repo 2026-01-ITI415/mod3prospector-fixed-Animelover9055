@@ -1,320 +1,254 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.SceneManagement;   // We’ll need this line later in the chapter
+using UnityEngine.SceneManagement;
 
-[RequireComponent(typeof(Deck))]                                              // a
+[RequireComponent(typeof(Deck))]
 [RequireComponent(typeof(JsonParseLayout))]
 public class Golf : MonoBehaviour
 {
-    private static Golf S; // A private Singleton for Prospector
+    private static Golf S;
 
     [Header("Dynamic")]
-    public List<CardProspector> drawPile;
-
-    public List<CardProspector> discardPile;
-    public List<CardProspector> mine;
-    public CardProspector target;
+    public List<CardGolf> drawPile;
+    public List<CardGolf> discardPile;
+    public List<CardGolf> mine;
+    public CardGolf target;
 
     private Transform layoutAnchor;
 
     private Deck deck;
     private JsonLayout jsonLayout;
 
-    // A Dictionary to pair mine layout IDs and actual Cards
-    private Dictionary<int, CardProspector> mineIdToCardDict;                 // a
-
+    private Dictionary<int, CardGolf> mineIdToCardDict;
 
     void Start()
     {
-        // Set the private Singleton. We’ll use this later.
-        if (S != null) Debug.LogError("Attempted to set S more than once!");  // b
+        if (S != null) Debug.LogError("Attempted to set S more than once!");
         S = this;
 
         jsonLayout = GetComponent<JsonParseLayout>().layout;
 
         deck = GetComponent<Deck>();
-        // These two lines replace the Start() call we commented out in Deck
         deck.InitDeck();
         Deck.Shuffle(ref deck.cards);
 
-        drawPile = ConvertCardsToCardProspectors(deck.cards);
+        drawPile = ConvertCardsToCardGolfs(deck.cards);
 
         LayoutMine();
-SetMineFaceUps();
+        SetMineFaceUps();
 
-MoveToTarget(Draw());
-UpdateDrawPile();
+        MoveToTarget(Draw());
+        UpdateDrawPile();
     }
 
-    /// <summary>
-    /// Converts each Card in a List(Card) into a List(CardProspector) so that it
-    ///  can be used in the Prospector game.
-    /// </summary>
-    /// <param name="listCard">A List(Card) to be converted</param>
-    /// <returns>A List(CardProspector) of the converted cards</returns>
-    List<CardProspector> ConvertCardsToCardProspectors(List<Card> listCard)
+    List<CardGolf> ConvertCardsToCardGolfs(List<Card> listCard)
     {
-        List<CardProspector> listCP = new List<CardProspector>();
-        CardProspector cp;
+        List<CardGolf> listCG = new List<CardGolf>();
+        CardGolf cg;
+
         foreach (Card card in listCard)
         {
-            cp = card as CardProspector;                                      // c
-            listCP.Add(cp);
+            cg = card as CardGolf;
+            listCG.Add(cg);
         }
-        return (listCP);
+
+        return listCG;
     }
 
-    /// <summary>
-    /// Pulls a single card from the beginning of the drawPile and returns it
-    /// Note: There is no protection against trying to draw from an empty pile!
-    /// </summary>
-    /// <returns>The top card of drawPile</returns>
-    CardProspector Draw()
+    CardGolf Draw()
     {
-        CardProspector cp = drawPile[0]; // Pull the 0th CardProspector
-        drawPile.RemoveAt(0);            // Then remove it from drawPile
-        return (cp);                      // And return it
+        CardGolf cg = drawPile[0];
+        drawPile.RemoveAt(0);
+        return cg;
     }
 
-    /// <summary>
-    /// Positions the initial tableau of cards, a.k.a. the "mine"
-    /// </summary>
     void LayoutMine()
     {
-        // Create an empty GameObject to serve as an anchor for the tableau   // a
         if (layoutAnchor == null)
         {
-            // Create an empty GameObject named _LayoutAnchor in the Hierarchy
             GameObject tGO = new GameObject("_LayoutAnchor");
-            layoutAnchor = tGO.transform;             // Grab its Transform
+            layoutAnchor = tGO.transform;
         }
 
-        CardProspector cp;
+        CardGolf cg;
 
-        // Generate the Dictionary to match mine layout ID to CardProspector
-        mineIdToCardDict = new Dictionary<int, CardProspector>();             // b
+        mineIdToCardDict = new Dictionary<int, CardGolf>();
 
-
-        // Iterate through the JsonLayoutSlots pulled from the JSON_Layout
         foreach (JsonLayoutSlot slot in jsonLayout.slots)
         {
-            cp = Draw(); // Pull a card from the top (beginning) of the draw Pile
-            cp.faceUp = slot.faceUp;    // Set its faceUp to the value in SlotDef
-                                        // Make the CardProspector a child of layoutAnchor
-            cp.transform.SetParent(layoutAnchor);
+            cg = Draw();
 
-            // Convert the last char of the layer string to an int (e.g. "Row 0")
-            int z = int.Parse(slot.layer[slot.layer.Length - 1].ToString());  // c
+            cg.faceUp = slot.faceUp;
+            cg.transform.SetParent(layoutAnchor);
 
-            // Set the localPosition of the card based on the slot information
-            cp.SetLocalPos(new Vector3(
-            jsonLayout.multiplier.x * slot.x,
-            jsonLayout.multiplier.y * slot.y,
-            -z));                                                       // d
+            int z = int.Parse(slot.layer[slot.layer.Length - 1].ToString());
 
-            cp.layoutID = slot.id;
-            cp.layoutSlot = slot;
-            // CardProspectors in the mine have the state CardState.mine
-            cp.state = eCardState.mine;
+            cg.SetLocalPos(new Vector3(
+                jsonLayout.multiplier.x * slot.x,
+                jsonLayout.multiplier.y * slot.y,
+                -z
+            ));
 
-            // Set the sorting layer of all SpriteRenderers on the Card
-            cp.SetSpriteSortingLayer(slot.layer);
+            cg.layoutID = slot.id;
+            cg.layoutSlot = slot;
+            cg.state = eCardStateGolf.mine;
 
-            mine.Add(cp); // Add this CardProspector to the List<mine>
+            cg.SetSpriteSortingLayer(slot.layer);
 
-            // Add this CardProspector to the mineIDtoCardDict Dictionary
-            mineIdToCardDict.Add(slot.id, cp);                                // c
+            mine.Add(cg);
 
+            mineIdToCardDict.Add(slot.id, cg);
         }
     }
 
-    /// <summary>
-    /// Moves the current target card to the discardPile
-    /// </summary>
-    /// <param name="cp">The CardProspector to be moved</param>
-    void MoveToDiscard(CardProspector cp)
+    void MoveToDiscard(CardGolf cg)
     {
-        // Set the state of the card to discard
-        cp.state = eCardState.discard;
-        discardPile.Add(cp);  // Add it to the discardPile List<>
-        cp.transform.SetParent(layoutAnchor); // Update its transform parent
+        cg.state = eCardStateGolf.discard;
+        discardPile.Add(cg);
 
-        // Position it on the discardPile
-        cp.SetLocalPos(new Vector3(
-        jsonLayout.multiplier.x * jsonLayout.discardPile.x,
-        jsonLayout.multiplier.y * jsonLayout.discardPile.y,
-        0));
+        cg.transform.SetParent(layoutAnchor);
 
-        cp.faceUp = true;
+        cg.SetLocalPos(new Vector3(
+            jsonLayout.multiplier.x * jsonLayout.discardPile.x,
+            jsonLayout.multiplier.y * jsonLayout.discardPile.y,
+            0
+        ));
 
-        // Place it on top of the pile for depth sorting
-        cp.SetSpriteSortingLayer(jsonLayout.discardPile.layer);               // a
-        cp.SetSortingOrder(-200 + (discardPile.Count * 3));                  // b
+        cg.faceUp = true;
+
+        cg.SetSpriteSortingLayer(jsonLayout.discardPile.layer);
+        cg.SetSortingOrder(-200 + (discardPile.Count * 3));
     }
 
-    /// <summary>
-    /// Make cp the new target card
-    /// </summary>
-    /// <param name="cp">The CardProspector to be moved</param>
-    void MoveToTarget(CardProspector cp)
+    void MoveToTarget(CardGolf cg)
     {
-        // If there is currently a target card, move it to discardPile
         if (target != null) MoveToDiscard(target);
 
-        // Use MoveToDiscard to move the target card to the correct location
-        MoveToDiscard(cp);                                                    // c
+        MoveToDiscard(cg);
 
-        // Then set a few additional things to make cp the new target
-        target = cp; // cp is the new target
-        cp.state = eCardState.target;
+        target = cg;
+        cg.state = eCardStateGolf.target;
 
-        // Set the depth sorting so that cp is on top of the discardPile
-        cp.SetSpriteSortingLayer("Target");                                 // c
-        cp.SetSortingOrder(0);
+        cg.SetSpriteSortingLayer("Target");
+        cg.SetSortingOrder(0);
     }
 
-    /// <summary>
-    /// Arranges all the cards of the drawPile to show how many are left
-    /// </summary>
     void UpdateDrawPile()
     {
-        CardProspector cp;
-        // Go through all the cards of the drawPile
+        CardGolf cg;
+
         for (int i = 0; i < drawPile.Count; i++)
         {
-            cp = drawPile[i];
-            cp.transform.SetParent(layoutAnchor);
+            cg = drawPile[i];
+            cg.transform.SetParent(layoutAnchor);
 
-            // Position it correctly with the layout.drawPile.stagger
-            Vector3 cpPos = new Vector3();
-            cpPos.x = jsonLayout.multiplier.x * jsonLayout.drawPile.x;
-            // Add the staggering for the drawPile
-            cpPos.x += jsonLayout.drawPile.xStagger * i;
-            cpPos.y = jsonLayout.multiplier.y * jsonLayout.drawPile.y;
-            cpPos.z = 0.1f * i;
-            cp.SetLocalPos(cpPos);
+            Vector3 cgPos = new Vector3();
+            cgPos.x = jsonLayout.multiplier.x * jsonLayout.drawPile.x;
+            cgPos.x += jsonLayout.drawPile.xStagger * i;
+            cgPos.y = jsonLayout.multiplier.y * jsonLayout.drawPile.y;
+            cgPos.z = 0.1f * i;
 
-            cp.faceUp = false; // DrawPile Cards are all face-down
-            cp.state = eCardState.drawpile;
-            // Set depth sorting
-            cp.SetSpriteSortingLayer(jsonLayout.drawPile.layer);
-            cp.SetSortingOrder(-10 * i);
+            cg.SetLocalPos(cgPos);
+
+            cg.faceUp = false;
+            cg.state = eCardStateGolf.drawpile;
+
+            cg.SetSpriteSortingLayer(jsonLayout.drawPile.layer);
+            cg.SetSortingOrder(-10 * i);
         }
     }
 
-    /// <summary>
-    /// This turns cards in the Mine face-up and face-down
-    /// </summary>
     public void SetMineFaceUps()
-    {                                            // d
-        foreach (CardProspector cp in mine)
     {
-        cp.faceUp = true;
-    }
-    }
-bool CardIsPlayable(CardProspector cp)
-{
-    CardProspector coverCP;
-
-    foreach (int coverID in cp.layoutSlot.hiddenBy)
-    {
-        coverCP = mineIdToCardDict[coverID];
-
-        if (coverCP != null && coverCP.state == eCardState.mine)
+        foreach (CardGolf cg in mine)
         {
-            return false;
+            cg.faceUp = true;
         }
     }
 
-    return true;
-}
-    /// <summary>
-    /// Test whether the game is over
-    /// </summary>
+    bool CardIsPlayable(CardGolf cg)
+    {
+        CardGolf coverCG;
+
+        foreach (int coverID in cg.layoutSlot.hiddenBy)
+        {
+            coverCG = mineIdToCardDict[coverID];
+
+            if (coverCG != null && coverCG.state == eCardStateGolf.mine)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     void CheckForGameOver()
-    {                                                 // a
-                                                      // If the mine is empty, the game is over
+    {
         if (mine.Count == 0)
         {
-            GameOver(true);  // Call GameOver() with a win
+            GameOver(true);
             return;
         }
 
-        // If there are still cards in the mine & draw pile, the game’s not over
         if (drawPile.Count > 0) return;
 
-        // Check for remaining valid plays
-        foreach (CardProspector cp in mine)
+        foreach (CardGolf cg in mine)
         {
-            // If there is a valid play, the game’s not over
-            if (target.AdjacentTo(cp)) return;
+            if (target.AdjacentTo(cg)) return;
         }
 
-        // Since there are no valid plays, the game is over
-        GameOver(false);  // Call GameOver with a loss
+        GameOver(false);
     }
 
-    /// <summary>
-    /// Called when the game is over. Simple for now, but expandable
-    /// </summary>
-    /// <param name="won">true if the player won</param>
     void GameOver(bool won)
     {
         if (won)
         {
-            //Debug.Log("Game Over. You won! :)");
             ScoreManager.TALLY(eScoreEvent.gameWin);
         }
         else
         {
-            //Debug.Log("Game Over. You Lost. :(");
             ScoreManager.TALLY(eScoreEvent.gameLoss);
         }
 
-        // Reset the CardSpritesSO singleton to null
-        CardSpritesSO.RESET();                                                // b
-                                                                              // Reload the scene, resetting the game
-                                                                              // Note that there are TWO underscores at the beginning of "__Prospector…
-        SceneManager.LoadScene("__Prospector_Scene_0");
+        CardSpritesSO.RESET();
+
+        SceneManager.LoadScene("Golf");
     }
 
-    /// <summary>
-    /// Handler for any time a card in the game is clicked
-    /// </summary>
-    /// <param name="cp">The CardProspector that was clicked</param>
-    static public void CARD_CLICKED(CardProspector cp)
+    static public void CARD_CLICKED(CardGolf cg)
     {
-        // The reaction is determined by the state of the clicked card
-        switch (cp.state)
+        switch (cg.state)
         {
-            case eCardState.target:
-                // Clicking the target card does nothing
+            case eCardStateGolf.target:
                 break;
-            case eCardState.drawpile:
-                // Clicking *any* card in the drawPile will draw the next card
-                // Call two methods on the Prospector Singleton S
-                S.MoveToTarget(S.Draw());  // Draw a new target card
-                S.UpdateDrawPile();          // Restack the drawPile
+
+            case eCardStateGolf.drawpile:
+                S.MoveToTarget(S.Draw());
+                S.UpdateDrawPile();
                 ScoreManager.TALLY(eScoreEvent.draw);
                 break;
-            case eCardState.mine:
-    bool validMatch = true;
 
-    if (!S.CardIsPlayable(cp)) validMatch = false;
-    if (!cp.AdjacentTo(S.target)) validMatch = false;
+            case eCardStateGolf.mine:
+                bool validMatch = true;
 
-    if (validMatch)
-    {
-        S.mine.Remove(cp);
-        S.MoveToTarget(cp);
+                if (!S.CardIsPlayable(cg)) validMatch = false;
+                if (!cg.AdjacentTo(S.target)) validMatch = false;
 
-        S.SetMineFaceUps();
-        ScoreManager.TALLY(eScoreEvent.mine);
-    }
-    break;
+                if (validMatch)
+                {
+                    S.mine.Remove(cg);
+                    S.MoveToTarget(cg);
+
+                    S.SetMineFaceUps();
+                    ScoreManager.TALLY(eScoreEvent.mine);
+                }
+
+                break;
         }
+
         S.CheckForGameOver();
     }
-
 }
